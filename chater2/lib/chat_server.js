@@ -8,7 +8,7 @@ var currentRoom = {}
 
 exports.listen = function(server) {
 	io = socketio.listen(server)
-	io.serveClient('log level', 1)
+	io.set('log level', 1)
 	io.sockets.on('connection', function (socket) {
 		guestNumber = assignGuestName(socket, guestNumber, nickNames, nameUsed)
 		joinRoom(socket, 'Lobby')
