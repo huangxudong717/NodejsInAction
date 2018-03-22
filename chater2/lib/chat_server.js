@@ -1,4 +1,3 @@
-import { join } from 'path';
 
 var socketio = require('socket.io')
 var io;
@@ -7,7 +6,7 @@ var nickNames = {}
 var nameUsed = []
 var currentRoom = {}
 
-exports.listen = function() {
+exports.listen = function(server) {
 	io = socketio.listen(server)
 	io.serveClient('log level', 1)
 	io.sockets.on('connection', function (socket) {
@@ -62,3 +61,63 @@ function joinRoom(socket, room) {
 	socket.emit('message', {text: usersInRoomSumary})
 }
 
+//更名请求的逻辑
+function handleNameChangeAttempts(socket, nickNames, namesUsed) {
+    socket.on('nameAttempt', function (name) {      //添加 nameAttempt 事件监听器
+        if(name.indexOf('Guest') == 0){     //昵称不能以Guest 开头
+            socket.emit('nameResult', {
+                success: false,
+                message: 'Names can`t begin with "Guest"'
+            });
+        }else{
+            if(namesUsed.indexOf(name) == -1){      //如果昵称还没注册则执行注册
+                var previousName = nickNames[socket.id];
+                var previousNameIndex = namesUsed.indexOf(previousName);
+                namesUsed.push(name);
+                nickNames[socket.id] = name;
+                delete namesUsed[previousNameIndex];
+                // namesUsed.splice(previousNameIndex, 1);
+                socket.emit('nameResult',{
+                    success: true,
+                    name: name
+                });
+                socket.broadcast.to(currentRoom[socket.id]).emit('message', {
+                    text: previousName + 'is now knows as ' + name + '.'
+                })
+            }else{      //如果昵称已被占用则提示用户
+                socket.emit('nameResult',{
+                    success: false,
+                    message: 'That name is already in use'
+                })
+            }
+        }
+    })
+}
+
+//发送聊天消息
+function handleMessageBroadcasting(socket, nickNames) {
+    socket.on('message', function (message) {
+        socket.broadcast.to(message.room).emit('message',{
+            text: nickNames[socket.id] + ": " + message.text
+        });
+    });
+}
+
+//创建房间
+function  handleRoomJoining(socket) {
+    socket.on('join', function (room) {
+        socket.leave(currentRoom[socket.id]);
+        joinRoom(socket, room.newRoom);
+    })
+}
+
+//用户断开连接
+function handleClientDisconnection(socket, nickNames, namesUsed) {
+    socket.on('disconnect', function () {
+        var nameIndex = namesUsed.indexOf(nickNames[socket.id]);
+        delete namesUsed[nameIndex];
+        // namesUsed.slice(nameIndex, 1);
+        delete nickNames[socket.id];
+        // nickNames.slice(socket.id, 1);
+    })
+}
